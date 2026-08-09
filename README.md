@@ -1,18 +1,16 @@
-# Marstek Cloud Battery – Home Assistant Custom Integration
+# Marstek Cloud for Home Assistant
 
-This custom integration connects your Marstek battery system (via the Marstek cloud API) to Home Assistant, pulling live data and exposing it as sensor entities.
+Home Assistant custom integration that connects your **Marstek battery** (Venus C/D/E) to Home Assistant via the **Marstek cloud API**, pulling live data and exposing it as sensor entities.
+
+Because it uses the **cloud API** (instead of the local WLAN/UDP API), it stays reliable even when the battery's local Wi-Fi connection drops. The data is fetched straight from the Marstek cloud over your internet connection.
 
 ---
 
 ## ✨ Features
 
-- **Automatic login & token refresh**  
-  Logs in to the Marstek cloud API using your credentials, hashes your password (MD5) before sending, and automatically refreshes the token if it expires.
-  
-- **Configurable scan interval**  
-  Set how often the integration polls the API (10–3600 seconds) during initial setup or later via the Options menu.
-
-- **Battery metrics exposed as sensors**  
+- **Automatic login & token refresh** — Logs in to the Marstek cloud API using your credentials, hashes your password (MD5) before sending, and automatically refreshes the token if it expires.
+- **Configurable scan interval** — Set how often the integration polls the API (10–3600 seconds) during setup or later via the Options menu.
+- **Battery metrics as sensors**
   - `soc` – State of charge (%)
   - `charge` – Charge power (W)
   - `discharge` – Discharge power (W)
@@ -21,130 +19,93 @@ This custom integration connects your Marstek battery system (via the Marstek cl
   - `version` – Firmware version
   - `sn` – Serial number
   - `report_time` – Timestamp of last report
-  - `total_charge` – Total charge per device (kWh).
-
-- **Cross-device total charge sensor**  
-  - `total_charge_all_devices` – Sum of total charges across all batteries (kWh).
-
-- **Diagnostic sensors**  
-  - `last_update` – Time of last successful update
-  - `api_latency` – API call duration in milliseconds
-  - `connection_status` – Online/offline status
-
-- **Device registry integration**  
-  Each battery appears as a device in HA with model, serial number, firmware version, and manufacturer.
-
-- **Editable battery capacity**  
-  Configure the default capacity (in kWh) for each battery during setup or later via the Options menu.
-
-- **Smart device filtering**  
-  Automatically filters out non-compatible or irrelevant device types (e.g., "HME-3") from the device list.
+  - `total_charge` – Total charge per device (kWh)
+- **Cross-device total charge sensor** — `total_charge_all_devices`: sum of total charges across all batteries (kWh).
+- **Diagnostic sensors** — `last_update`, `api_latency` (ms), `connection_status`.
+- **Device registry integration** — Each battery appears as a device in HA with model, serial, firmware, and manufacturer.
+- **Editable battery capacity** — Configure the default capacity (in kWh) per battery during setup or via Options.
+- **Smart device filtering** — Automatically filters out non-compatible device types (e.g. `HME-3`).
 
 ---
 
 ## 🛠 Installation
 
-1. Copy the `marstek_cloud` folder into your Home Assistant `custom_components` directory.
+### Via HACS (recommended)
+
+[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=bjornmonnens&repository=marstek_cloud&category=integration)
+
+1. Open **HACS** in Home Assistant.
+2. Click the **⋮** (three dots) in the top-right corner → **Custom repositories**.
+3. Add this repository:
+   ```
+   https://github.com/bjornmonnens/marstek_cloud
+   ```
+   and set **Category** to **Integration**.
+4. Click **Add**. **Marstek Cloud** will now appear in the HACS list.
+5. Click **Install** (the `v0.2.0` release is downloaded) and **restart Home Assistant**.
+
+### Manual copy
+
+1. Drop the `custom_components/marstek_cloud` folder into your Home Assistant `custom_components` directory.
 2. Restart Home Assistant.
-3. Go to **Settings → Devices & Services → Add Integration** and search for **Marstek Cloud Battery**.
-4. Enter your Marstek cloud email, password, and desired scan interval.
 
 ---
 
-## ⚙ Configuration
+## ⚙️ Setup / Configuration
 
-- **Scan interval** can be set during initial setup and changed later via the integration’s **Configure** option.
-- **Default battery capacity** (in kWh) can be set for each battery during setup or via the **Options** menu.
-- Default capacity is 5.12 kWh.
-- Minimum scan interval is 10 seconds, maximum is 3600 seconds.
+1. Go to **Settings → Devices & Services → Add Integration** and search for **Marstek Cloud**.
+2. Enter your **Marstek cloud email** and **password**, plus the desired **scan interval**.
+3. The integration logs in, fetches your batteries, and creates the sensor entities.
+
+After setup you can return to the integration's **Options** to:
+- Change the **scan interval**.
+- Set the **default battery capacity** (kWh) for each battery.
+
+> **Note:** Default capacity is `5.12 kWh`. Minimum scan interval is 10 s, maximum 3600 s.
 
 ---
 
-## 🔍 Logic Flow
+## 🧰 Entities
 
-Here’s how the integration works internally:
+Each battery exposes the sensors `soc`, `charge`, `discharge`, `load`, `profit`, `version`, `sn`, `report_time`, `total_charge`, plus diagnostics `last_update`, `api_latency`, `connection_status`, and a cross-device `total_charge_all_devices`.
 
-### 1. **Setup**
-- `config_flow.py` collects your email, password, scan interval, and default battery capacities.
-- These are stored securely in HA’s config entries.
+---
 
-### 2. **Coordinator & API**
-- `__init__.py` creates:
-  - An `aiohttp` session for async HTTP calls.
-  - A `MarstekAPI` instance for talking to the cloud API.
-  - A `MarstekCoordinator` (subclass of `DataUpdateCoordinator`) that schedules periodic updates.
+## 🔍 How it works (Logic Flow)
 
-### 3. **Login & Token Handling**
-- On first run, `MarstekAPI._get_token()`:
-  - MD5‑hashes your password.
-  - Sends a POST request to `https://eu.hamedata.com/app/Solar/v2_get_device.php`.
-  - Stores the returned `token`.
-- On each update, `MarstekAPI.get_devices()`:
-  - Calls `https://eu.hamedata.com/ems/api/v1/getDeviceList` with the token.
-  - If the API responds with an invalid/expired token, it refreshes and retries once.
-  - If the API responds with error code `8` (no access permission), it clears the cached token and logs the error. A new token will be obtained automatically on the next update cycle.
-
-### 4. **Data Fetching**
-- The coordinator's `_async_update_data()`:
-  - Records the start time.
-  - Calls `api.get_devices()` to fetch the latest battery list.
-  - Filters out ignored device types (e.g., "HME-3").
-  - Calculates API latency in milliseconds.
-  - Returns the filtered list of devices to all entities.
-
-### 5. **Entity Creation**
-- `sensor.py`:  
-  - For each device in the API response, creates:  
-    - One `MarstekSensor` per metric in `SENSOR_TYPES`.  
-    - One `MarstekDiagnosticSensor` per metric in `DIAGNOSTIC_SENSORS`.  
-    - One `MarstekDeviceTotalChargeSensor` for the total charge per device.  
-  - Creates a `MarstekTotalChargeSensor` for the cross-device total charge.  
-  - Each entity has:  
-    - A unique ID (`devid_fieldname`).  
-    - Device info (name, model, serial, firmware, manufacturer).
-
-### 6. **Updates**
-- HA calls `async_update()` on entities when needed.
-- Entities pull their latest value from the coordinator’s cached data.
-- The coordinator refreshes data on the configured interval or when manually triggered.
+1. **Setup** — `config_flow.py` collects email, password, scan interval, capacities; stored securely in HA config entries.
+2. **Coordinator & API** — `__init__.py` creates an `aiohttp` session, a `MarstekAPI` instance (cloud API), and a `MarstekCoordinator` (`DataUpdateCoordinator`) that schedules periodic updates.
+3. **Login & token** — `MarstekAPI._get_token()` MD5-hashes the password, posts to the login endpoint, and stores the token. `get_devices()` calls the device-list endpoint with the token, refreshes on expiry, and clears the token on error code `8`.
+4. **Data fetching** — The coordinator polls the API on the configured interval, filters ignored device types, and calculates latency.
+5. **Entity creation** — `sensor.py` creates one sensor per metric plus diagnostics and the cross-device total.
+6. **Updates** — Entities pull values from the coordinator's cached data on each refresh.
 
 ---
 
 ## 📡 API Endpoints Used
 
-- **Login**:  
-  `POST https://eu.hamedata.com/app/Solar/v2_get_device.php?pwd=<MD5_PASSWORD>&mailbox=<EMAIL>`
-
-- **Get Devices**:  
-  `GET https://eu.hamedata.com/ems/api/v1/getDeviceList?token=<TOKEN>`
+- **Login**
+  ```
+  POST https://eu.hamedata.com/app/Solar/v2_get_device.php?pwd=<MD5_PASSWORD>&mailbox=<EMAIL>
+  ```
+- **Get Devices**
+  ```
+  GET https://eu.hamedata.com/ems/api/v1/getDeviceList?token=<TOKEN>
+  ```
 
 ---
 
-## 📊 Sequence Diagram
+## 🔧 Troubleshooting
 
-```mermaid
-sequenceDiagram
-    participant HA as Home Assistant
-    participant CF as Config Flow
-    participant CO as Coordinator
-    participant API as Marstek API
-    participant ENT as Sensor Entities
+- For verbose logging, add to `configuration.yaml`:
+  ```yaml
+  logger:
+    logs:
+      custom_components.marstek_cloud: debug
+  ```
+- If the data seems stale, check the configured **scan interval** under Options (the Marstek cloud API may also refresh data more slowly than requested).
+- When reporting an issue, always attach the integration's **diagnostics export** and relevant HA logs.
 
-    HA->>CF: User enters email, password, scan interval, capacities
-    CF-->>HA: Store credentials, scan interval, capacities
-    HA->>CO: Create coordinator with API client
-    CO->>API: POST login (MD5 password)
-    API-->>CO: Return token
-    loop Every scan_interval seconds
-        CO->>API: GET device list (token)
-        alt Token expired
-            API-->>CO: Error (invalid token)
-            CO->>API: POST login (refresh token)
-            API-->>CO: Return new token
-            CO->>API: GET device list (retry)
-        end
-        API-->>CO: Return device data
-        CO-->>ENT: Update all sensor values
-        ENT-->>HA: Display updated metrics
-    end
-```
+---
+
+The integration is a fork/continuation of [`DoctaShizzle/marstek_cloud`](https://github.com/DoctaShizzle/marstek_cloud).

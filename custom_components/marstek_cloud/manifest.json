@@ -3,6 +3,7 @@
   "name": "Marstek Cloud",
   "version": "0.2.0",
   "documentation": "https://github.com/bjornmonnens/marstek_cloud",
+  "issue_tracker": "https://github.com/bjornmonnens/marstek_cloud/issues",
   "requirements": ["aiohttp"],
   "codeowners": ["@bjornmonnens"],
   "iot_class": "cloud_polling",

@@ -19,7 +19,10 @@ SENSOR_TYPES = {
     "profit": {"name": "Profit", "unit": CURRENCY_EURO},
     "version": {"name": "Firmware Version", "unit": None},
     "sn": {"name": "Serial Number", "unit": None},
-    "report_time": {"name": "Report Time", "unit": UnitOfTime.SECONDS}
+    "report_time": {"name": "Report Time", "unit": UnitOfTime.SECONDS},
+    "status": {"name": "Battery Connection Status", "unit": None},
+    "pv": {"name": "PV Power", "unit": UnitOfPower.WATT},
+    "grid": {"name": "Grid Power", "unit": UnitOfPower.WATT}
 }
 
 # Diagnostic sensors for integration health
@@ -102,7 +105,11 @@ class MarstekSensor(MarstekBaseSensor):
         """Return the current value of the sensor."""
         for dev in self.coordinator.data:
             if dev["devid"] == self.devid:
-                return dev.get(self.key)
+                value = dev.get(self.key)
+                # Translate the device status field into a readable state
+                if self.key == "status":
+                    return "online" if int(value or 0) == 1 else "offline"
+                return value
         return None
 
     async def async_update(self):

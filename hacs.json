@@ -1,8 +1,5 @@
 {
   "name": "Marstek Cloud",
-  "filename": "marstek_cloud.zip",
-  "content_in_root": false,
   "render_readme": true,
-  "homeassistant": "2024.1.0",
-  "persistent_directory": false
+  "homeassistant": "2024.1.0"
 }
